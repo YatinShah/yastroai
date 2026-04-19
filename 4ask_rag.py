@@ -1,8 +1,12 @@
-import vertexai
 import os
 import langchain
+from dotenv import load_dotenv
 
-from langchain_google_vertexai import VertexAIEmbeddings, ChatVertexAI
+load_dotenv()
+if "GEMINI_API_KEY" in os.environ and "GOOGLE_API_KEY" not in os.environ:
+    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from langchain_core.prompts import PromptTemplate
@@ -14,7 +18,7 @@ from langchain_core.prompts import PromptTemplate
 # Configuration
 PROJECTID = "atroai"
 REGION = "us-central1"
-GEMINI_EMBED_MODEL = "text-embedding-004"
+GEMINI_EMBED_MODEL = "gemini-embedding-001"
 # COLLECTION_NAME = "atroai_pdf_chunks" #use this for text based embeddings.
 COLLECTION_NAME = "pdf_rag_collection" #use pdf_rag_collection to use multimodal embeddings.
 
@@ -25,11 +29,8 @@ QDRANT_URL = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
 
 
 def ask_question(user_question):
-    # 1. Initialize Vertex AI
-    vertexai.init(project=PROJECTID, location=REGION)
-    
     # 2. Re-connect to Local Qdrant
-    embeddings = VertexAIEmbeddings(model_name="text-embedding-004")
+    embeddings = GoogleGenerativeAIEmbeddings(model=f"models/{GEMINI_EMBED_MODEL}")
     client = QdrantClient(url=QDRANT_URL)
     
     vector_store = QdrantVectorStore(
@@ -39,8 +40,8 @@ def ask_question(user_question):
     )
 
     # 3. Initialize the Gemini LLM
-    # We use ChatVertexAI for conversation generation, setting a low temperature for factual accuracy
-    llm = ChatVertexAI(model="gemini-2.5-pro", temperature=0.1)
+    # We use ChatGoogleGenerativeAI for conversation generation, setting a low temperature for factual accuracy
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.5)
 
     # 4. Create the RAG Prompt Template
     # This strictly instructs the LLM to only use our PDF data

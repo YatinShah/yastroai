@@ -1,33 +1,34 @@
-import vertexai
+import os
+from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
+
+load_dotenv()
 
 # Configuration
 PROJECTID = "atroai"
 REGION = "us-central1"
 PDF_PATH = "data/readHoroscope.pdf"
-GEMINI_EMBED_MODEL = "text-embedding-004"
+GEMINI_EMBED_MODEL = "gemini-embedding-001"
 COLLECTION_NAME = "atroai_pdf_chunks"
 
 def build_local_database():
-    # 1. Initialize Vertex AI for Embeddings
-    vertexai.init(project=PROJECTID, location=REGION)
-    embeddings = VertexAIEmbeddings(model_name=GEMINI_EMBED_MODEL)
+    api_key = os.getenv("GEMINI_API_KEY")
+    embeddings = GoogleGenerativeAIEmbeddings(model=f"models/{GEMINI_EMBED_MODEL}", google_api_key=api_key)
 
     # 2. Connect to local Qdrant Docker container
     print("Connecting to local Qdrant container...")
     client = QdrantClient(url="http://localhost:6333")
     
     # Check if collection exists, if not, create it
-    # Note: text-embedding-004 outputs 768 dimensions
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
         )
 
     # 3. Initialize the LangChain Qdrant wrapper

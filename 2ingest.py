@@ -1,11 +1,9 @@
 import os
 import getpass
 from dotenv import load_dotenv
-import vertexai
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas as pdf_canvas
 
@@ -37,9 +35,6 @@ def process_pdf():
         print(f"📁 PDF file not found at {PDF_PATH}. Creating sample...")
         create_sample_pdf()
     
-    # Initialize the Vertex AI SDK for the specific region
-    vertexai.init(project=PROJECTID, location=REGION)
-
     # Load the PDF document
     try:
         loader = PyPDFLoader(PDF_PATH)
@@ -62,14 +57,13 @@ def process_pdf():
             print("📝 Please set GEMINI_API_KEY in the .env file or as an environment variable.")
             return
         
-        # embedding_model = GoogleGenerativeAIEmbeddings(model=GEMINI_MODEL, google_api_key=api_key)
-        # embedding_model = VertexAIEmbeddings(model_name="text-embedding-004")
-        embedding_model = VertexAIEmbeddings(model_name=GEMINI_EMBED_MODEL)
+        embedding_model = GoogleGenerativeAIEmbeddings(model=f"models/{GEMINI_EMBED_MODEL}", google_api_key=api_key)
 
         # Test embedding generation on the first chunk
         print("Generating sample embedding...")
         sample_vector = embedding_model.embed_query(chunks[0].page_content)
         print(f"✅ Generated embedding vector with {len(sample_vector)} dimensions!")
+        print(f"🔍 Sample of the embedding vector (first 5 elements): {sample_vector[:5]} ...")
         print(f"✅ Successfully processed {len(chunks)} chunks")
     except Exception as e:
         print(f"❌ Error generating embeddings: {e}")

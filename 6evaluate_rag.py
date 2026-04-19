@@ -1,7 +1,9 @@
 ##LLM as judge exmaple.
 
-import vertexai
-from vertexai.generative_models import GenerativeModel
+import os
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 import streamlit as st
 import importlib.util
 
@@ -16,10 +18,9 @@ PROJECTID = "atroai"
 REGION = "us-central1"
 
 def evaluate_pipeline():
-    vertexai.init(project=PROJECTID, location=REGION)
-    
-    # We use an evaluator model with zero creativity (temperature=0)
-    evaluator = GenerativeModel("gemini-2.5-pro", generation_config={"temperature": 0.0})
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
     
     # Define your test case based on your sample outputs
     test_question = "What is the primary objective of the documents you ingested?"  # Adjust this question based on your PDF content
@@ -44,7 +45,11 @@ def evaluate_pipeline():
     """
     
     # 3. Grade the answer
-    result = evaluator.generate_content(eval_prompt)
+    result = client.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=eval_prompt,
+        config=types.GenerateContentConfig(temperature=0.0)
+    )
     print("\n📊 --- Evaluation Results ---")
     print(result.text)
 

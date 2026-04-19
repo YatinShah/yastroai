@@ -1,15 +1,18 @@
 import os
 import glob
 import fitz  # PyMuPDF
-import vertexai
 import langchain
-from vertexai.generative_models import GenerativeModel, Part
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_google_vertexai import VertexAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
+
+load_dotenv()
 
 langchain.debug = True
 
@@ -17,21 +20,25 @@ langchain.debug = True
 PROJECTID = "atroai"
 REGION = "us-central1"
 COLLECTION_NAME = "pdf_rag_collection"
-GEMINI_EMBED_MODEL = "text-embedding-004"
+GEMINI_EMBED_MODEL = "gemini-embedding-001"
 DOCUMENT_DIR="./data"  # Directory containing PDFs for batch processing
 
 
 def process_bulk_pdfs():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("❌ GEMINI_API_KEY not found in environment variables.")
+        return
+
     # 1. Initialize Models & Database
-    vertexai.init(project=PROJECTID, location=REGION)
-    vision_model = GenerativeModel("gemini-1.5-pro")
-    embeddings = VertexAIEmbeddings(model_name=GEMINI_EMBED_MODEL)
+    client_genai = genai.Client(api_key=api_key)
+    embeddings = GoogleGenerativeAIEmbeddings(model=f"models/{GEMINI_EMBED_MODEL}", google_api_key=api_key)
     
     client = QdrantClient(url="http://localhost:6333")
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
         )
         
     vector_store = QdrantVectorStore(
@@ -82,14 +89,17 @@ def process_bulk_pdfs():
                     image_bytes = base_image["image"]
                     ext = base_image["ext"]
                     
-                    image_part = Part.from_data(data=image_bytes, mime_type=f"image/{ext}")
+                    image_part = types.Part.from_bytes(data=image_bytes, mime_type=f"image/{ext}")
                     prompt = (
                         "Describe this image in high detail. "
                         "If it is a chart or graph, extract the specific data points and trends. "
                         "If it is a diagram, explain the flow and components."
                     )
                     
-                    response = vision_model.generate_content([image_part, prompt])
+                    response = client_genai.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=[image_part, prompt]
+                    )
                     
                     raw_documents.append(Document(
                         page_content=f"[File: {filename} | Page {page_num + 1} Image]\n{response.text}",

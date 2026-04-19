@@ -1,0 +1,9 @@
+streamlit
+langchain
+langchain-community
+langchain-text-splitters
+langchain-google-vertexai
+langchain-qdrant
+qdrant-client
+google-cloud-aiplatform
+langchain-google-genai

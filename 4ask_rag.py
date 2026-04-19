@@ -44,6 +44,8 @@ def ask_question(user_question):
 
     # 4. Create the RAG Prompt Template
     # This strictly instructs the LLM to only use our PDF data
+    # **Few shot prompting** examples are provided to guide the model on how to format the answer and what to do if the answer is not found in the retrieved context. 
+        # You can modify these examples based on your specific use case and document content.
     system_prompt = (
         "You are an expert AI astrologer. Use the following pieces of retrieved context "
         "to answer the user's question. If the answer is not in the context, say 'I cannot answer this.'\n\n"

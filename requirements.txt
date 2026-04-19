@@ -6,4 +6,7 @@ langchain-google-vertexai
 langchain-qdrant
 qdrant-client
 google-cloud-aiplatform
-langchain-google-genai
+python-dotenv
+reportlab
+PyMuPDF
+langchain-core

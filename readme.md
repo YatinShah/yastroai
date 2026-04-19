@@ -1,5 +1,5 @@
 
-- The document to train the model was downloaded from project gutenburge, related to astrology
+- The documents (data.*.txt/pdf) to train the model were downloaded from project gutenburge, related to astrology
 
 ## run following commands to setup the projects first time with glcoud.
 
@@ -36,6 +36,7 @@ gcloud ai models list --region=us-central1
 
 ### To run the application with creating embeddings follow these commands locally:
 - convert the data/*.txt files to pdf files in same folder.
+- create a .env file and add `GEMINI_API_KEY` from gcloud console
 ```
 $> python 31multimodal_ingest.py #reads all the pdf files from the data folder, it reads text as well as images. Creates embeddings in the vector db.
 $> python 4ask_rag.py #creates rag pipeline from the vector db

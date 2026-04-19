@@ -21,6 +21,9 @@ REGION = "us-central1"
 GEMINI_EMBED_MODEL = "gemini-embedding-001"
 # COLLECTION_NAME = "atroai_pdf_chunks" #use this for text based embeddings.
 COLLECTION_NAME = "pdf_rag_collection" #use pdf_rag_collection to use multimodal embeddings.
+GEMINI_LLM_MODEL = "gemini-2.5-pro"
+GEMINI_LLM_TEMPERATURE = 0.5
+SIMILARITY_SEARCH_K = 5
 
 # Get Qdrant connection details from environment or use defaults
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
@@ -40,10 +43,10 @@ def ask_question(user_question):
     )
 
     # 3. Initialize the Gemini LLM
-    # We use ChatGoogleGenerativeAI for conversation generation, setting a low temperature for factual accuracy
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0.5)
+    # We use ChatGoogleGenerativeAI for conversation generation, setting a temperature for factual accuracy
+    llm = ChatGoogleGenerativeAI(model=GEMINI_LLM_MODEL, temperature=GEMINI_LLM_TEMPERATURE)
 
-    # 4. Create the RAG Prompt Template
+    # 4. Create the RAG Prompt Template (kept as a string for readability)
     # This strictly instructs the LLM to only use our PDF data
     # **Few shot prompting** examples are provided to guide the model on how to format the answer and what to do if the answer is not found in the retrieved context. 
         # You can modify these examples based on your specific use case and document content.
@@ -63,8 +66,8 @@ def ask_question(user_question):
     )
     prompt = PromptTemplate.from_template(system_prompt + "\n\nQuestion: {input}")
 
-    # 5. Retrieve the top 5 relevant chunks from Qdrant and choose the best match
-    matches = vector_store.similarity_search_with_relevance_scores(user_question, k=5)
+    # 5. Retrieve the top relevant chunks from Qdrant and choose the best match
+    matches = vector_store.similarity_search_with_relevance_scores(user_question, k=SIMILARITY_SEARCH_K)
     if not matches:
         print("No matching documents found in Qdrant.")
         return "I cannot answer this."

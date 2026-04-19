@@ -19,10 +19,16 @@ langchain.debug = True
 # Configuration
 PROJECTID = "atroai"
 REGION = "us-central1"
+
 COLLECTION_NAME = "pdf_rag_collection"
 GEMINI_EMBED_MODEL = "gemini-embedding-001"
 DOCUMENT_DIR="./data"  # Directory containing PDFs for batch processing
 
+# Text splitting and Qdrant ingestion parameters
+TEXT_CHUNK_SIZE = 500
+TEXT_CHUNK_OVERLAP = 100
+QDRANT_BATCH_SIZE = 12
+IMAGE_DESCRIPTION_MODEL = "gemini-2.5-flash"
 
 def process_bulk_pdfs():
     api_key = os.getenv("GEMINI_API_KEY")
@@ -34,18 +40,24 @@ def process_bulk_pdfs():
     client_genai = genai.Client(api_key=api_key)
     embeddings = GoogleGenerativeAIEmbeddings(model=f"models/{GEMINI_EMBED_MODEL}", google_api_key=api_key)
     
-    client = QdrantClient(url="http://localhost:6333")
+    # Get Qdrant connection details from environment or use defaults
+    QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+    QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+    QDRANT_URL = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
+
+    print(f"Connecting to Qdrant at {QDRANT_URL}...")
+    client = QdrantClient(url=QDRANT_URL)
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
         )
         
-    vector_store = QdrantVectorStore(
-        client=client, collection_name=COLLECTION_NAME, embedding=embeddings
-    )
+    vector_store = QdrantVectorStore(client=client, collection_name=COLLECTION_NAME, embedding=embeddings)
     
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100) #reduce the chunk size in case of input tokens are more than what Gemini can handle, especially after adding image descriptions. You can experiment with this size based on your documents and needs.
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=TEXT_CHUNK_SIZE, chunk_overlap=TEXT_CHUNK_OVERLAP
+    )
 
     # 2. Find all PDFs in the directory
     if not os.path.exists(DOCUMENT_DIR):
@@ -97,7 +109,7 @@ def process_bulk_pdfs():
                     )
                     
                     response = client_genai.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model=IMAGE_DESCRIPTION_MODEL,
                         contents=[image_part, prompt]
                     )
                     
@@ -111,7 +123,7 @@ def process_bulk_pdfs():
         # 4. Chunk and upload THIS specific document before moving to the next
         if raw_documents:
             chunks = text_splitter.split_documents(raw_documents)
-            vector_store.add_documents(chunks, batch_size=12)
+            vector_store.add_documents(chunks, batch_size=QDRANT_BATCH_SIZE)
             print(f"✅ Upserted {len(chunks)} chunks to Qdrant for {filename}\n")
         else:
             print(f"⚠️ No readable content found in {filename}\n")

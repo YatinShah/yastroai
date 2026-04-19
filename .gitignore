@@ -384,3 +384,4 @@ ollama/
 *.txt
 Paper/
 qdrant_storage/
+credentials/

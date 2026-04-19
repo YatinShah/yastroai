@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -11,3 +9,28 @@ services:
     volumes:
       - ./qdrant_storage:/qdrant/storage
     restart: unless-stopped
+    networks:
+      - rag-network
+
+  app:
+    build: .
+    container_name: streamlit_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./credentials:/app/credentials
+      - ./qdrant_storage:/app/qdrant_storage
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/vertex-ai-key.json
+      - QDRANT_HOST=local_qdrant
+      - QDRANT_PORT=6333
+    depends_on:
+      - qdrant
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+networks:
+  rag-network:
+    driver: bridge

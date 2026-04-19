@@ -1,4 +1,5 @@
 import vertexai
+import os
 from langchain_google_vertexai import VertexAIEmbeddings, ChatVertexAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -9,7 +10,13 @@ PROJECTID = "atroai"
 REGION = "us-central1"
 PDF_PATH = "data/readHoroscope.pdf"
 GEMINI_EMBED_MODEL = "text-embedding-004"
-COLLECTION_NAME = "atroai_pdf_chunks"
+# COLLECTION_NAME = "atroai_pdf_chunks" #use this for text based embeddings.
+COLLECTION_NAME = "pdf_rag_collection" #use pdf_rag_collection to use multimodal embeddings.
+
+# Get Qdrant connection details from environment or use defaults
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+QDRANT_URL = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
 
 
 def ask_question(user_question):
@@ -18,7 +25,7 @@ def ask_question(user_question):
     
     # 2. Re-connect to Local Qdrant
     embeddings = VertexAIEmbeddings(model_name="text-embedding-004")
-    client = QdrantClient(url="http://localhost:6333")
+    client = QdrantClient(url=QDRANT_URL)
     
     vector_store = QdrantVectorStore(
         client=client,

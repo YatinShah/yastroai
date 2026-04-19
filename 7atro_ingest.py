@@ -1,3 +1,4 @@
+# file combines 31* and 4* python scripts into one.
 import os
 import glob
 import fitz  # PyMuPDF

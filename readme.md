@@ -36,4 +36,5 @@ to run the webui run, `streamlit run 5app.py`
 --TODO
 Use newer libraries, and remove deprecated libraries/ objects from use. eg. use GenAi library instead of VertexAI
 Use dockerized embedding model. e.g. Qwen3-VL-2B 
+Use a 3072 vector embeddings instead of 768 currently in use.
 

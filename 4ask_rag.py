@@ -37,9 +37,6 @@ def ask_question(user_question):
         collection_name=COLLECTION_NAME,
         embedding=embeddings,
     )
-    
-    # Create a retriever that fetches the top 3 most relevant chunks
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
     # 3. Initialize the Gemini LLM
     # We use ChatVertexAI for conversation generation, setting a low temperature for factual accuracy
@@ -63,10 +60,20 @@ def ask_question(user_question):
     )
     prompt = PromptTemplate.from_template(system_prompt + "\n\nQuestion: {input}")
 
-    # 5. Retrieve the top-k relevant chunks from Qdrant
-    docs = retriever.invoke(user_question)
+    # 5. Retrieve the top 5 relevant chunks from Qdrant and choose the best match
+    matches = vector_store.similarity_search_with_relevance_scores(user_question, k=5)
+    if not matches:
+        print("No matching documents found in Qdrant.")
+        return "I cannot answer this."
+
+    # Sort by similarity score descending and use the best match first
+    matches.sort(key=lambda item: item[1], reverse=True)
+    docs = [doc for doc, _ in matches]
+    best_doc, best_score = matches[0]
+
     context = "\n\n".join(
-        f"Chunk {i+1}:\n{doc.page_content}" for i, doc in enumerate(docs)
+        f"Chunk {i+1} (score: {score:.3f}):\n{doc.page_content}"
+        for i, (doc, score) in enumerate(matches)
     )
 
     # 6. Generate an answer from Gemini
@@ -89,11 +96,12 @@ def ask_question(user_question):
     # --- DEBUGGING THE RETRIEVER ---
     print("\n==================================================")
     print("[DEBUG 2] 🔍 VECTOR DATABASE RETRIEVAL RESULTS")
-    print(f"Retrieved {len(docs)} chunks from Qdrant.")
+    print(f"Retrieved {len(docs)} candidate chunks from Qdrant.")
+    print(f"Best match score: {best_score:.3f}")
     print("==================================================")
 
     print("\n📚 --- Source Documents Used ---")
-    for i, doc in enumerate(docs):
+    for i, (doc, score) in enumerate(matches):
         metadata = doc.metadata
         source = metadata.get('source', 'Unknown')
         page = metadata.get('page', 'N/A')
@@ -102,6 +110,7 @@ def ask_question(user_question):
         print(f"  Document: {source}")
         print(f"  Page: {page}")
         print(f"  Type: {doc_type}")
+        print(f"  Similarity: {score:.3f}")
         print(f"  Content: {doc.page_content[:400]}...")
         print()
 

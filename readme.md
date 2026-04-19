@@ -35,6 +35,7 @@ gcloud ai models list --region=us-central1
 ### Generate credentials/vertex-ai-key.json file, as gemini to create `service account credentials JSON file`.
 
 ### To run the application with creating embeddings follow these commands locally:
+- convert the data/*.txt files to pdf files in same folder.
 ```
 $> python 31multimodal_ingest.py #reads all the pdf files from the data folder, it reads text as well as images. Creates embeddings in the vector db.
 $> python 4ask_rag.py #creates rag pipeline from the vector db

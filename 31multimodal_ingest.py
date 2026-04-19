@@ -2,6 +2,7 @@ import os
 import glob
 import fitz  # PyMuPDF
 import vertexai
+import langchain
 from vertexai.generative_models import GenerativeModel, Part
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -10,10 +11,11 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
+langchain.debug = True
+
 # Configuration
 PROJECTID = "atroai"
 REGION = "us-central1"
-PDF_PATH = "data/sample.pdf"
 COLLECTION_NAME = "pdf_rag_collection"
 GEMINI_EMBED_MODEL = "text-embedding-004"
 DOCUMENT_DIR="./data"  # Directory containing PDFs for batch processing
@@ -22,7 +24,7 @@ DOCUMENT_DIR="./data"  # Directory containing PDFs for batch processing
 def process_bulk_pdfs():
     # 1. Initialize Models & Database
     vertexai.init(project=PROJECTID, location=REGION)
-    vision_model = GenerativeModel("gemini-2.5-pro")
+    vision_model = GenerativeModel("gemini-1.5-pro")
     embeddings = VertexAIEmbeddings(model_name=GEMINI_EMBED_MODEL)
     
     client = QdrantClient(url="http://localhost:6333")

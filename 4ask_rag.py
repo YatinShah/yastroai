@@ -1,14 +1,19 @@
 import vertexai
 import os
+import langchain
+
 from langchain_google_vertexai import VertexAIEmbeddings, ChatVertexAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from langchain_core.prompts import PromptTemplate
 
+#option 1 to debug - may be noisey with all the logs from langchain and qdrant client, but can be helpful to see the flow of data and identify where things might be going wrong.
+#langchain.debug = True
+
+
 # Configuration
 PROJECTID = "atroai"
 REGION = "us-central1"
-PDF_PATH = "data/readHoroscope.pdf"
 GEMINI_EMBED_MODEL = "text-embedding-004"
 # COLLECTION_NAME = "atroai_pdf_chunks" #use this for text based embeddings.
 COLLECTION_NAME = "pdf_rag_collection" #use pdf_rag_collection to use multimodal embeddings.
@@ -38,7 +43,7 @@ def ask_question(user_question):
 
     # 3. Initialize the Gemini LLM
     # We use ChatVertexAI for conversation generation, setting a low temperature for factual accuracy
-    llm = ChatVertexAI(model_name="gemini-2.5-pro", temperature=0.1)
+    llm = ChatVertexAI(model="gemini-2.5-pro", temperature=0.1)
 
     # 4. Create the RAG Prompt Template
     # This strictly instructs the LLM to only use our PDF data
@@ -67,6 +72,9 @@ def ask_question(user_question):
     # 6. Generate an answer from Gemini
     print(f"Thinking about: '{user_question}'...\n")
     prompt_text = prompt.format(input=user_question, context=context)
+
+    print(f"\n[DEBUG 1] USER QUESTION RECEIVED: '{user_question}'")
+    print(f"[DEBUG 1] Converting question to a vector using '{GEMINI_EMBED_MODEL}'...")
     response = llm.invoke(prompt_text)
 
     # 7. Output the results
@@ -78,9 +86,33 @@ def ask_question(user_question):
         answer = str(response)
         print(answer)
 
+    # --- DEBUGGING THE RETRIEVER ---
+    print("\n==================================================")
+    print("[DEBUG 2] 🔍 VECTOR DATABASE RETRIEVAL RESULTS")
+    print(f"Retrieved {len(docs)} chunks from Qdrant.")
+    print("==================================================")
+
     print("\n📚 --- Source Documents Used ---")
     for i, doc in enumerate(docs):
-        print(f"Source {i+1}: {doc.page_content[:400]}...")
+        metadata = doc.metadata
+        source = metadata.get('source', 'Unknown')
+        page = metadata.get('page', 'N/A')
+        doc_type = metadata.get('type', 'text')
+        print(f"Source {i+1}:")
+        print(f"  Document: {source}")
+        print(f"  Page: {page}")
+        print(f"  Type: {doc_type}")
+        print(f"  Content: {doc.page_content[:400]}...")
+        print()
+
+    # --- DEBUGGING THE GENERATION ---
+    print("\n==================================================")
+    print("[DEBUG 3] 🧠 GEMINI MODEL EVALUATION & ANSWER")
+    print("==================================================")
+    print("Gemini read the user question AND the raw text chunks above.")
+    print("Here is the final generated answer based ONLY on those chunks:\n")
+    print(answer)
+    print("\n==================================================\n")
 
     return answer
 

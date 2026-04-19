@@ -10,3 +10,5 @@ python-dotenv
 reportlab
 PyMuPDF
 langchain-core
+requests
+google-genai

@@ -197,6 +197,8 @@ docker compose up --build app -d
 ## References
 
 - The documents (data.*.txt/pdf) to train the model were downloaded from project gutenburge, related to astrology
+- [Google AI model availability](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/locations#united-states)
+- [VertexAI Locations](https://docs.cloud.google.com/vertex-ai/docs/general/locations)
 - Gemini embedding models: https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-embedding-2/
 - Embedding model comparison: https://milvus.io/blog/choose-embedding-model-rag-2026.md ^^VGood^^
 

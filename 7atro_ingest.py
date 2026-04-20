@@ -180,9 +180,16 @@ class DocumentIngestor:
             )
             print(f"      [DEBUG] Received description from Gemini (length: {len(response.text)})")
             
+            # Save the image to disk
+            image_filename = f"{filename}_page{page_num+1}_img{img_index+1}.{ext}"
+            image_filepath = os.path.join("data", "extracted_images", image_filename)
+            with open(image_filepath, "wb") as img_file:
+                img_file.write(image_bytes)
+            print(f"      [DEBUG] Saved image to {image_filepath}")
+            
             raw_documents.append(Document(
                 page_content=f"[File: {filename} | Page {page_num + 1} Image {img_index + 1}]\n{response.text}",
-                metadata={"source": filename, "page": page_num + 1, "type": "image_summary"}
+                metadata={"source": filename, "page": page_num + 1, "type": "image_summary", "image_path": image_filepath}
             ))
         except Exception as e:
             print(f"      [DEBUG] ⚠️ Failed to process an image on page {page_num + 1} in {filename}: {e}")
@@ -219,13 +226,13 @@ class RAGQueryEngine:
             "{context}"
         )
 
-    def ask_question(self, user_question: str) -> str:
+    def ask_question(self, user_question: str) -> tuple[str, list]:
         """Retrieves documents from Qdrant and generates an answer."""
         print(f"\n--- Answering Question: '{user_question}' ---")
 
         if not self.qdrant_client.collection_exists(self.config.collection_name):
             print(f"❌ Qdrant collection '{self.config.collection_name}' does not exist. Please run ingestion first.")
-            return "I cannot answer this question as the document collection is not set up."
+            return "I cannot answer this question as the document collection is not set up.", []
 
         vector_store = QdrantVectorStore(
             client=self.qdrant_client,
@@ -238,7 +245,7 @@ class RAGQueryEngine:
         matches = vector_store.similarity_search_with_relevance_scores(user_question, k=self.config.similarity_search_k)
         if not matches:
             print("No matching documents found in Qdrant.")
-            return "I cannot answer this."
+            return "I cannot answer this.", []
 
         matches.sort(key=lambda item: item[1], reverse=True)
         
@@ -246,6 +253,14 @@ class RAGQueryEngine:
             f"Chunk {i+1} (score: {score:.3f}):\n{doc.page_content}"
             for i, (doc, score) in enumerate(matches)
         )
+
+        image_paths = []
+        for doc, score in matches:
+            if doc.metadata.get("type") == "image_summary" and "image_path" in doc.metadata:
+                image_paths.append(doc.metadata["image_path"])
+                
+        # Deduplicate while preserving order
+        image_paths = list(dict.fromkeys(image_paths))
 
         print(f"Preparing prompt for Gemini with retrieved context...")
         prompt_text = prompt.format(input=user_question, context=context)
@@ -255,7 +270,7 @@ class RAGQueryEngine:
         
         self._print_debug_info(matches, answer)
 
-        return answer
+        return answer, image_paths
 
     def _print_debug_info(self, matches, answer):
         """Prints debugging and source information."""
@@ -312,7 +327,9 @@ class AstroRAGApplication:
             elif choice == '2':
                 question = input("Enter your question: ")
                 if question.strip():
-                    self.query_engine.ask_question(question)
+                    answer, image_paths = self.query_engine.ask_question(question)
+                    if image_paths:
+                        print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
                 else:
                     print("Question cannot be empty.")
             elif choice == '3':

@@ -2,10 +2,16 @@ import streamlit as st
 import importlib.util
 
 # Load the module since filename starts with a number
-spec = importlib.util.spec_from_file_location("ask_rag", "4ask_rag.py")
+spec = importlib.util.spec_from_file_location("atro_ingest", "7atro_ingest.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-ask_question = module.ask_question 
+AstroConfig = module.AstroConfig
+RAGQueryEngine = module.RAGQueryEngine
+
+# Initialize the query engine once in session state
+if "query_engine" not in st.session_state:
+    config = AstroConfig()
+    st.session_state.query_engine = RAGQueryEngine(config)
 
 # Set up the Streamlit page
 st.set_page_config(page_title="Local RAG Assistant", page_icon="📚")
@@ -20,6 +26,9 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if "images" in message:
+            for img_path in message["images"]:
+                st.image(img_path, caption="Matched Image")
 
 # Wait for user input
 if prompt := st.chat_input("Ask a question about your documents..."):
@@ -33,11 +42,12 @@ if prompt := st.chat_input("Ask a question about your documents..."):
     # Display a loading spinner while Gemini thinks
     with st.chat_message("assistant"):
         with st.spinner("Searching local Qdrant database..."):
-            # Call your LangChain RAG function
-            # Make sure ask_question() returns the final text instead of just printing it
-            response_text = ask_question(prompt) 
+            # Call the new OO RAG Query Engine
+            response_text, image_paths = st.session_state.query_engine.ask_question(prompt)
             
             st.markdown(response_text)
+            for img_path in image_paths:
+                st.image(img_path, caption="Matched Image")
             
     # Save AI response to history
-    st.session_state.messages.append({"role": "assistant", "content": response_text})
+    st.session_state.messages.append({"role": "assistant", "content": response_text, "images": image_paths})

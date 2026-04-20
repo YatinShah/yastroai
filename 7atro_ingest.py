@@ -47,6 +47,9 @@ class AstroConfig:
         self.text_chunk_size = 1500
         self.text_chunk_overlap = 150
         self.qdrant_batch_size = 12
+        # the dimension for gemini-embedding-001 is 3072
+        # but sinve we use fastembed embeddings, the vector dimension is 384
+        self.vector_dimension = 384
 
         # RAG (Retrieval Augmented Generation) Parameters
         self.gemini_llm_temperature = 0.5
@@ -76,7 +79,7 @@ class DocumentIngestor:
         print(f"Creating new Qdrant collection: '{self.config.collection_name}'")
         self.qdrant_client.create_collection(
             collection_name=self.config.collection_name,
-            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=self.config.vector_dimension, distance=Distance.COSINE),
         )
 
     def process_bulk_pdfs(self):

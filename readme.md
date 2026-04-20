@@ -157,6 +157,12 @@ This reads document text and images, creates embeddings, and stores vectors in Q
 python 4ask_rag.py
 ```
 
+### To ingest and run the commandline app 
+
+```bash
+python 7atro_ingest.py
+```
+
 ### Start the Streamlit app
 
 ```bash

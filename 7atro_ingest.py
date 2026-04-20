@@ -34,19 +34,23 @@ class AstroConfig:
         self.collection_name = "pdf_rag_collection"
 
         # Gemini Models
+        # gemini-embedding-001: Max input limit is 2,048 tokens per chunk
         self.gemini_embed_model = "gemini-embedding-001"
+        # gemini-2.5-flash: Max input is 1,000,000 tokens. Max output is 8,192 tokens.
         self.image_description_model = "gemini-2.5-flash"
+        # gemini-2.5-pro: Max input is 2,000,000 tokens. Max output is 8,192 tokens.
         self.gemini_llm_model = "gemini-2.5-pro"
 
         # Ingestion Parameters
         self.document_dir = "./data"
-        self.text_chunk_size = 500
+        self.text_chunk_size = 1000
         self.text_chunk_overlap = 100
         self.qdrant_batch_size = 12
 
         # RAG (Retrieval Augmented Generation) Parameters
         self.gemini_llm_temperature = 0.5
         self.similarity_search_k = 5
+        self.gemini_llm_max_output_tokens = 8192
 
         # Qdrant Connection Details
         self.qdrant_host = os.getenv("QDRANT_HOST", "localhost")
@@ -66,15 +70,16 @@ class DocumentIngestor:
         self.qdrant_client = QdrantClient(url=self.config.qdrant_url)
 
     def setup_collection(self):
-        """Creates Qdrant collection if it doesn't exist."""
-        if not self.qdrant_client.collection_exists(self.config.collection_name):
-            print(f"Creating Qdrant collection: '{self.config.collection_name}'")
-            self.qdrant_client.create_collection(
-                collection_name=self.config.collection_name,
-                vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
-            )
-        else:
-            print(f"Qdrant collection '{self.config.collection_name}' already exists.")
+        """Deletes the Qdrant collection if it exists, then creates a new one."""
+        if self.qdrant_client.collection_exists(self.config.collection_name):
+            print(f"Deleting existing Qdrant collection: '{self.config.collection_name}'")
+            self.qdrant_client.delete_collection(self.config.collection_name)
+            
+        print(f"Creating new Qdrant collection: '{self.config.collection_name}'")
+        self.qdrant_client.create_collection(
+            collection_name=self.config.collection_name,
+            vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+        )
 
     def process_bulk_pdfs(self):
         """Processes all PDF documents in the DOCUMENT_DIR."""
@@ -115,40 +120,51 @@ class DocumentIngestor:
         """Extracts text and images from a single PDF and uploads to Qdrant."""
         filename = os.path.basename(pdf_path)
         print(f"--- Processing: {filename} ---")
+        print(f"[DEBUG] Opening PDF: {pdf_path}")
         
         doc = fitz.open(pdf_path)
         raw_documents = []
+        print(f"[DEBUG] Total pages in {filename}: {len(doc)}")
 
         for page_num in range(len(doc)):
             page = doc[page_num]
+            print(f"  [DEBUG] Processing page {page_num + 1}/{len(doc)}")
             
             # Extract Text
             text = page.get_text()
             if text.strip():
+                print(f"    [DEBUG] Extracted {len(text)} characters of text from page {page_num + 1}")
                 raw_documents.append(Document(
                     page_content=f"[File: {filename} | Page {page_num + 1} Text]\n{text}",
                     metadata={"source": filename, "page": page_num + 1, "type": "text"}
                 ))
+            else:
+                print(f"    [DEBUG] No text found on page {page_num + 1}")
 
             # Extract & Describe Images
             images = page.get_images(full=True)
+            print(f"    [DEBUG] Found {len(images)} images on page {page_num + 1}")
             for img_index, img_info in enumerate(images):
-                self._process_image(doc, img_info, filename, page_num, raw_documents)
+                print(f"    [DEBUG] Processing image {img_index + 1}/{len(images)} on page {page_num + 1}")
+                self._process_image(doc, img_info, filename, page_num, raw_documents, img_index)
 
         if raw_documents:
+            print(f"[DEBUG] Splitting {len(raw_documents)} raw documents into chunks...")
             chunks = text_splitter.split_documents(raw_documents)
+            print(f"[DEBUG] Created {len(chunks)} chunks. Uploading to Qdrant in batches of {self.config.qdrant_batch_size}...")
             vector_store.add_documents(chunks, batch_size=self.config.qdrant_batch_size)
             print(f"✅ Upserted {len(chunks)} chunks to Qdrant for {filename}\n")
         else:
             print(f"⚠️ No readable content (text or images) found in {filename}\n")
 
-    def _process_image(self, doc, img_info, filename: str, page_num: int, raw_documents: list):
+    def _process_image(self, doc, img_info, filename: str, page_num: int, raw_documents: list, img_index: int):
         """Extracts and describes a single image."""
         try:
             xref = img_info[0]
             base_image = doc.extract_image(xref)
             image_bytes = base_image["image"]
             ext = base_image["ext"]
+            print(f"      [DEBUG] Extracted image with xref {xref}, format {ext}, size {len(image_bytes)} bytes")
             
             image_part = types.Part.from_bytes(data=image_bytes, mime_type=f"image/{ext}")
             prompt = (
@@ -157,17 +173,19 @@ class DocumentIngestor:
                 "If it is a diagram, explain the flow and components."
             )
             
+            print(f"      [DEBUG] Sending image to Gemini {self.config.image_description_model} for description...")
             response = self.client_genai.models.generate_content(
                 model=self.config.image_description_model,
                 contents=[image_part, prompt]
             )
+            print(f"      [DEBUG] Received description from Gemini (length: {len(response.text)})")
             
             raw_documents.append(Document(
-                page_content=f"[File: {filename} | Page {page_num + 1} Image]\n{response.text}",
+                page_content=f"[File: {filename} | Page {page_num + 1} Image {img_index + 1}]\n{response.text}",
                 metadata={"source": filename, "page": page_num + 1, "type": "image_summary"}
             ))
         except Exception as e:
-            print(f"  ⚠️ Failed to process an image on page {page_num + 1} in {filename}: {e}")
+            print(f"      [DEBUG] ⚠️ Failed to process an image on page {page_num + 1} in {filename}: {e}")
 
 
 class RAGQueryEngine:
@@ -182,6 +200,7 @@ class RAGQueryEngine:
         self.llm = ChatGoogleGenerativeAI(
             model=self.config.gemini_llm_model, 
             temperature=self.config.gemini_llm_temperature, 
+            max_output_tokens=self.config.gemini_llm_max_output_tokens,
             google_api_key=self.config.gemini_api_key
         )
 
@@ -191,8 +210,8 @@ class RAGQueryEngine:
             "### FORMATTING INSTRUCTIONS & EXAMPLES ###\n"
             "Always format your response exactly like the examples below.\n\n"
             "Example 1:\n"
-            "User: What is my birth planet, if my birthdate is 01/01/1972?\n"
-            "Output: **Birth date:** 01/01/1972 | **Planet:** Mercury | **Source:** You were born on 01/01/1972, based on birthchart, you were born in planet Mercury.\n\n"
+            "User: What is my birth planet, if my birthdate is 01/01/1906?\n"
+            "Output: **Birth date:** 01/01/1906 | **Planet:** Venus | **Planet Symbol:** ♉ | **Sign:** Pisces | **Zodiac Symbol:** ♓ | **Chakra:** Throat | **Element:** Water | **Color:** Light Blue / Aqua | **Gemstone:** Moonstone | **Season:** Spring | **Motto:** I dream | **Element Modality:** Mutable | **Planet Modality:** Venus | **Element Triplicity:** Water | **Planet Triplicity:** Venus | **Planet Quadruplicity:** Water | **Planet Quadruplicity:** Venus | **Planet Quadruplicity:** Water | **Planet Quadruplicity:** Venus\n\n"
             "Example 2:\n"
             "User: List birthstone based on my birthdate.\n"
             "Output: **Key birthstone:**\n- Emerald\n- Shepphier\n\n"

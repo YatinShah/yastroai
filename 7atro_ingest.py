@@ -9,7 +9,8 @@ from google import genai
 from google.genai import types
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
@@ -43,8 +44,8 @@ class AstroConfig:
 
         # Ingestion Parameters
         self.document_dir = "./data"
-        self.text_chunk_size = 1000
-        self.text_chunk_overlap = 100
+        self.text_chunk_size = 1500
+        self.text_chunk_overlap = 150
         self.qdrant_batch_size = 12
 
         # RAG (Retrieval Augmented Generation) Parameters
@@ -63,10 +64,7 @@ class DocumentIngestor:
     def __init__(self, config: AstroConfig):
         self.config = config
         self.client_genai = genai.Client(api_key=self.config.gemini_api_key)
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=f"models/{self.config.gemini_embed_model}", 
-            google_api_key=self.config.gemini_api_key
-        )
+        self.embeddings = FastEmbedEmbeddings()
         self.qdrant_client = QdrantClient(url=self.config.qdrant_url)
 
     def setup_collection(self):
@@ -78,7 +76,7 @@ class DocumentIngestor:
         print(f"Creating new Qdrant collection: '{self.config.collection_name}'")
         self.qdrant_client.create_collection(
             collection_name=self.config.collection_name,
-            vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+            vectors_config=VectorParams(size=384, distance=Distance.COSINE),
         )
 
     def process_bulk_pdfs(self):
@@ -178,7 +176,7 @@ class DocumentIngestor:
                 model=self.config.image_description_model,
                 contents=[image_part, prompt]
             )
-            print(f"      [DEBUG] Received description from Gemini (length: {len(response.text)})")
+            print(f"      [DEBUG] Received description from Gemini : {response.text}")
             
             # Save the image to disk
             image_filename = f"{filename}_page{page_num+1}_img{img_index+1}.{ext}"
@@ -199,10 +197,7 @@ class RAGQueryEngine:
     """Handles retrieving context and answering questions."""
     def __init__(self, config: AstroConfig):
         self.config = config
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=f"models/{self.config.gemini_embed_model}", 
-            google_api_key=self.config.gemini_api_key
-        )
+        self.embeddings = FastEmbedEmbeddings()
         self.qdrant_client = QdrantClient(url=self.config.qdrant_url)
         self.llm = ChatGoogleGenerativeAI(
             model=self.config.gemini_llm_model, 

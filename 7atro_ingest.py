@@ -46,15 +46,21 @@ class AstroConfig:
         # Ollama Models
         self.ollama_model = "llama3.2:1b"
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.68.10:9090")
+        self.ollama_embed_model = "nomic-embed-text:v1.5"
+        self.embed_provider = os.getenv("EMBED_PROVIDER", "ollama")
 
         # Ingestion Parameters
         self.document_dir = "./data"
         self.text_chunk_size = 1500
         self.text_chunk_overlap = 150
         self.qdrant_batch_size = 12
-        # the dimension for gemini-embedding-001 is 3072
-        # but sinve we use fastembed embeddings, the vector dimension is 384
-        self.vector_dimension = 384
+        
+        if self.embed_provider.lower() == "google":
+            self.vector_dimension = 768
+        elif self.embed_provider.lower() == "ollama":
+            self.vector_dimension = 768
+        else:
+            self.vector_dimension = 384 # fastembed default
 
         # RAG (Retrieval Augmented Generation) Parameters
         self.gemini_llm_temperature = 0.5
@@ -78,13 +84,33 @@ class AstroConfig:
                 self._qdrant_client = QdrantClient(path=self.qdrant_path)
         return self._qdrant_client
 
+    def get_embeddings(self, provider: str = None):
+        """Factory method to get the specified Embeddings."""
+        provider = provider or self.embed_provider
+        if provider.lower() == "google":
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+            return GoogleGenerativeAIEmbeddings(
+                model=self.gemini_embed_model,
+                google_api_key=self.gemini_api_key
+            )
+        elif provider.lower() == "ollama":
+            from langchain_community.embeddings import OllamaEmbeddings
+            return OllamaEmbeddings(
+                model=self.ollama_embed_model,
+                base_url=self.ollama_base_url
+            )
+        elif provider.lower() == "fastembed":
+            from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+            return FastEmbedEmbeddings()
+        else:
+            raise ValueError(f"Unsupported embedding provider: {provider}")
 
 class DocumentIngestor:
     """Handles the ingestion of PDF documents into the vector store."""
     def __init__(self, config: AstroConfig):
         self.config = config
         self.client_genai = genai.Client(api_key=self.config.gemini_api_key)
-        self.embeddings = FastEmbedEmbeddings()
+        self.embeddings = self.config.get_embeddings()
         self.qdrant_client = self.config.get_qdrant_client()
 
     def setup_collection(self):
@@ -213,12 +239,11 @@ class DocumentIngestor:
         except Exception as e:
             print(f"      [DEBUG] ⚠️ Failed to process an image on page {page_num + 1} in {filename}: {e}")
 
-
 class RAGQueryEngine:
     """Handles retrieving context and answering questions."""
     def __init__(self, config: AstroConfig):
         self.config = config
-        self.embeddings = FastEmbedEmbeddings()
+        self.embeddings = self.config.get_embeddings()
         self.qdrant_client = self.config.get_qdrant_client()
 
         self.system_prompt = (
@@ -331,7 +356,6 @@ class RAGQueryEngine:
         print("Here is the final generated answer based ONLY on those chunks:\n")
         print(answer)
         print("\n==================================================\n")
-
 
 class AstroRAGApplication:
     """Main application orchestrator."""

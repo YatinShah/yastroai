@@ -55,12 +55,21 @@ class AstroConfig:
         self.text_chunk_overlap = 150
         self.qdrant_batch_size = 12
         
-        if self.embed_provider.lower() == "google":
-            self.vector_dimension = 768
-        elif self.embed_provider.lower() == "ollama":
-            self.vector_dimension = 768
+        env_dim = os.getenv("VECTOR_DIMENSION")
+        if env_dim:
+            self.vector_dimension = int(env_dim)
         else:
-            self.vector_dimension = 384 # fastembed default
+            if self.embed_provider.lower() == "google":
+                self.vector_dimension = 3072
+            elif self.embed_provider.lower() == "ollama":
+                if "minilm" in self.ollama_embed_model.lower():
+                    self.vector_dimension = 384
+                elif "mxbai" in self.ollama_embed_model.lower():
+                    self.vector_dimension = 1024
+                else:
+                    self.vector_dimension = 768 # default for nomic-embed-text
+            else:
+                self.vector_dimension = 384 # fastembed default
 
         # RAG (Retrieval Augmented Generation) Parameters
         self.gemini_llm_temperature = 0.5

@@ -60,6 +60,18 @@ class AstroConfig:
         self.qdrant_host = os.getenv("QDRANT_HOST", "localhost")
         self.qdrant_port = int(os.getenv("QDRANT_PORT", 6333))
         self.qdrant_url = f"http://{self.qdrant_host}:{self.qdrant_port}"
+        self.qdrant_path = os.getenv("QDRANT_PATH", "./qdrant_storage")
+        self.use_qdrant_server = os.getenv("USE_QDRANT_SERVER", "true").lower() == "true"
+        self._qdrant_client = None
+
+    def get_qdrant_client(self):
+        """Returns a QdrantClient configured for either a server or local disk."""
+        if self._qdrant_client is None:
+            if self.use_qdrant_server:
+                self._qdrant_client = QdrantClient(url=self.qdrant_url)
+            else:
+                self._qdrant_client = QdrantClient(path=self.qdrant_path)
+        return self._qdrant_client
 
 
 class DocumentIngestor:
@@ -68,7 +80,7 @@ class DocumentIngestor:
         self.config = config
         self.client_genai = genai.Client(api_key=self.config.gemini_api_key)
         self.embeddings = FastEmbedEmbeddings()
-        self.qdrant_client = QdrantClient(url=self.config.qdrant_url)
+        self.qdrant_client = self.config.get_qdrant_client()
 
     def setup_collection(self):
         """Deletes the Qdrant collection if it exists, then creates a new one."""
@@ -85,7 +97,8 @@ class DocumentIngestor:
     def process_bulk_pdfs(self):
         """Processes all PDF documents in the DOCUMENT_DIR."""
         print("\n--- Starting Bulk PDF Ingestion ---")
-        print(f"Connecting to Qdrant at {self.config.qdrant_url}...")
+        location = self.config.qdrant_url if self.config.use_qdrant_server else self.config.qdrant_path
+        print(f"Connecting to Qdrant at {location}...")
         
         self.setup_collection()
         
@@ -201,7 +214,7 @@ class RAGQueryEngine:
     def __init__(self, config: AstroConfig):
         self.config = config
         self.embeddings = FastEmbedEmbeddings()
-        self.qdrant_client = QdrantClient(url=self.config.qdrant_url)
+        self.qdrant_client = self.config.get_qdrant_client()
         self.llm = ChatGoogleGenerativeAI(
             model=self.config.gemini_llm_model, 
             temperature=self.config.gemini_llm_temperature, 
@@ -321,7 +334,8 @@ class AstroRAGApplication:
             choice = input("Enter your choice (1, 2, or 3): ").strip()
 
             if choice == '1':
-                self.ingestor.process_bulk_pdfs()
+                print("Ingestion temporarily disabled.")
+                # self.ingestor.process_bulk_pdfs()
             elif choice == '2':
                 question = input("Enter your question: ")
                 if question.strip():
@@ -332,6 +346,8 @@ class AstroRAGApplication:
                     print("Question cannot be empty.")
             elif choice == '3':
                 print("Exiting. Goodbye!")
+                if self.config._qdrant_client:
+                    self.config._qdrant_client.close()
                 break
             else:
                 print("Invalid choice. Please enter 1, 2, or 3.")

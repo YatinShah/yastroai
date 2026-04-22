@@ -15,7 +15,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 from langchain_core.prompts import PromptTemplate
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 
 class AstroConfig:
     """Holds configuration constants and environment variables for the application."""
@@ -47,7 +47,14 @@ class AstroConfig:
         self.ollama_model = "llama3.2:1b"
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.68.10:9090")
         self.ollama_embed_model = "nomic-embed-text:v1.5"
-        self.embed_provider = os.getenv("EMBED_PROVIDER", "ollama")
+        self.embed_provider = os.getenv("EMBED_PROVIDER", "fastembed")
+        
+        # Isolate collections by provider to prevent dimension mismatches
+        # Default to pdf_rag_collection for fastembed to preserve existing data
+        if self.embed_provider.lower() == "fastembed":
+            self.collection_name = "pdf_rag_collection"
+        else:
+            self.collection_name = f"pdf_rag_collection_{self.embed_provider.lower()}"
 
         # Ingestion Parameters
         self.document_dir = "./data"
@@ -75,6 +82,7 @@ class AstroConfig:
         self.gemini_llm_temperature = 0.5
         self.similarity_search_k = 5
         self.gemini_llm_max_output_tokens = 8192
+        self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
         # Qdrant Connection Details
         self.qdrant_host = os.getenv("QDRANT_HOST", "localhost")
@@ -103,7 +111,7 @@ class AstroConfig:
                 google_api_key=self.gemini_api_key
             )
         elif provider.lower() == "ollama":
-            from langchain_community.embeddings import OllamaEmbeddings
+            from langchain_ollama import OllamaEmbeddings
             return OllamaEmbeddings(
                 model=self.ollama_embed_model,
                 base_url=self.ollama_base_url
@@ -291,7 +299,8 @@ class RAGQueryEngine:
     def ask_question(self, user_question: str, provider: str = "google") -> tuple[str, list]:
         """Retrieves documents from Qdrant and generates an answer."""
         provider_name = "Gemini" if provider.lower() == "google" else "Ollama"
-        print(f"\n--- Answering Question using {provider_name}: '{user_question}' ---")
+        if(self.config.debug_mode):
+            print(f"\n--- Answering Question using {provider_name}: '{user_question}' ---")
 
         if not self.qdrant_client.collection_exists(self.config.collection_name):
             print(f"❌ Qdrant collection '{self.config.collection_name}' does not exist. Please run ingestion first.")
@@ -325,19 +334,25 @@ class RAGQueryEngine:
         # Deduplicate while preserving order
         image_paths = list(dict.fromkeys(image_paths))
 
-        print(f"Preparing prompt for {provider_name} with retrieved context...")
+        if self.config.debug_mode:
+            print(f"Preparing prompt for {provider_name} with retrieved context...")
         prompt_text = prompt.format(input=user_question, context=context)
 
         llm = self._get_llm(provider)
         response = llm.invoke(prompt_text)
         answer = response.content if hasattr(response, "content") else str(response)
         
-        self._print_debug_info(matches, answer, provider_name)
+        self._print_debug_info(user_question, matches, answer, provider_name)
 
         return answer, image_paths
 
-    def _print_debug_info(self, matches, answer, provider_name: str):
+    def _print_debug_info(self, user_question, matches, answer, provider_name: str):
         """Prints debugging and source information."""
+        if not self.config.debug_mode:
+            print(f"\n--- Question: {user_question}\n")
+            print(f"--- Answer: {answer}\n")
+            return
+
         print("\n==================================================")
         print("[DEBUG] 🔍 VECTOR DATABASE RETRIEVAL RESULTS")
         print(f"Retrieved {len(matches)} candidate chunks from Qdrant.")
@@ -363,7 +378,8 @@ class RAGQueryEngine:
         print("==================================================")
         print(f"{provider_name} read the user question AND the raw text chunks above.")
         print("Here is the final generated answer based ONLY on those chunks:\n")
-        print(answer)
+        print(f"Question: {user_question}\n")
+        print(f"Answer: {answer}\n")
         print("\n==================================================\n")
 
 class AstroRAGApplication:
@@ -373,45 +389,90 @@ class AstroRAGApplication:
         self.ingestor = DocumentIngestor(self.config)
         self.query_engine = RAGQueryEngine(self.config)
 
-    def run(self):
-        print("Welcome to the Combined Ingestion and RAG Script!")
-        print("This script allows you to ingest documents or ask questions.")
-
-        while True:
-            print("\n--- Main Menu ---")
-            print("1. Ingest documents (process_bulk_pdfs)")
-            print("2. Ask a question (Gemini)")
-            print("3. Ask a question (Local Ollama - llama3.2:1b)")
-            print("4. Exit")
-            
-            choice = input("Enter your choice (1, 2, 3, or 4): ").strip()
-
-            if choice == '1':
-                print("Ingestion temporarily disabled.")
-                # self.ingestor.process_bulk_pdfs()
-            elif choice == '2':
-                question = input("Enter your question: ")
-                if question.strip():
-                    answer, image_paths = self.query_engine.ask_question(question, provider="google")
-                    if image_paths:
-                        print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
-                else:
-                    print("Question cannot be empty.")
-            elif choice == '3':
-                question = input("Enter your question: ")
-                if question.strip():
-                    answer, image_paths = self.query_engine.ask_question(question, provider="ollama")
-                    if image_paths:
-                        print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
-                else:
-                    print("Question cannot be empty.")
-            elif choice == '4':
-                print("Exiting. Goodbye!")
-                if self.config._qdrant_client:
-                    self.config._qdrant_client.close()
+    def _read_input(self, input_stream):
+        line = input_stream.readline()
+        if not line:
+            return None
+        stripped_line = line.strip()
+        lines = []
+        while stripped_line.endswith('|'):
+            lines.append(stripped_line[:-1].strip())
+            next_line = input_stream.readline()
+            if not next_line:
                 break
-            else:
-                print("Invalid choice. Please enter 1, 2, 3, or 4.")
+            stripped_line = next_line.strip()
+        lines.append(stripped_line)
+        return "\n".join(lines).strip()
+
+    def run(self, input_stream=sys.stdin, output_stream=sys.stdout):
+        is_stream = not input_stream.isatty()
+        original_stdout = sys.stdout
+        sys.stdout = output_stream
+        
+        try:
+            if not is_stream:
+                print("Welcome to the Combined Ingestion and RAG Script!")
+                print("This script allows you to ingest documents or ask questions.")
+
+            while True:
+                if not is_stream:
+                    print("\n--- Main Menu ---")
+                    print("1. Ingest documents (process_bulk_pdfs)")
+                    print("2. Ask a question (Gemini)")
+                    print("3. Ask a question (Local Ollama - llama3.2:1b)")
+                    print("4. Exit")
+                    print("Enter your choice (1, 2, 3, or 4) or type a question to default to Option 3: ", end="")
+                    sys.stdout.flush()
+                
+                choice = self._read_input(input_stream)
+                if choice is None:
+                    break
+                    
+                if not choice:
+                    continue
+                
+                # Check if the input is a direct question (doesn't start with a choice number)
+                question = None
+                if choice not in ['1', '2', '3', '4']:
+                    question = choice
+                    choice = '3'
+                    if not is_stream:
+                        print(f"\n--- [Stream Input] Defaulting to Ollama for question: '{question[:50]}...' ---")
+
+                if choice == '1':
+                    print("Ingestion temporarily disabled.")
+                    # self.ingestor.process_bulk_pdfs()
+                elif choice == '2':
+                    if not question:
+                        print("Enter your question: ", end="")
+                        sys.stdout.flush()
+                        question = self._read_input(input_stream)
+                    if question:
+                        answer, image_paths = self.query_engine.ask_question(question, provider="google")
+                        if image_paths:
+                            print(f"++Also retrieved {len(image_paths)} related images: {image_paths}")
+                    else:
+                        print("Question cannot be empty.")
+                elif choice == '3':
+                    if not question:
+                        print("Enter your question: ", end="")
+                        sys.stdout.flush()
+                        question = self._read_input(input_stream)
+                    if question:
+                        answer, image_paths = self.query_engine.ask_question(question, provider="ollama")
+                        if image_paths:
+                            print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
+                    else:
+                        print("Question cannot be empty.")
+                elif choice == '4':
+                    print("Exiting. Goodbye!")
+                    if self.config._qdrant_client:
+                        self.config._qdrant_client.close()
+                    break
+                else:
+                    print("Invalid choice. Please enter 1, 2, 3, or 4.")
+        finally:
+            sys.stdout = original_stdout
 
 if __name__ == "__main__":
     app = AstroRAGApplication()

@@ -15,6 +15,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 from langchain_core.prompts import PromptTemplate
+from langchain_community.chat_models import ChatOllama
 
 class AstroConfig:
     """Holds configuration constants and environment variables for the application."""
@@ -41,6 +42,10 @@ class AstroConfig:
         self.image_description_model = "gemini-2.5-flash"
         # gemini-2.5-pro: Max input is 2,000,000 tokens. Max output is 8,192 tokens.
         self.gemini_llm_model = "gemini-2.5-pro"
+
+        # Ollama Models
+        self.ollama_model = "llama3.2:1b"
+        self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.68.10:9090")
 
         # Ingestion Parameters
         self.document_dir = "./data"
@@ -215,12 +220,6 @@ class RAGQueryEngine:
         self.config = config
         self.embeddings = FastEmbedEmbeddings()
         self.qdrant_client = self.config.get_qdrant_client()
-        self.llm = ChatGoogleGenerativeAI(
-            model=self.config.gemini_llm_model, 
-            temperature=self.config.gemini_llm_temperature, 
-            max_output_tokens=self.config.gemini_llm_max_output_tokens,
-            google_api_key=self.config.gemini_api_key
-        )
 
         self.system_prompt = (
             "You are an expert AI astrologer. Use the following pieces of retrieved context "
@@ -237,9 +236,28 @@ class RAGQueryEngine:
             "{context}"
         )
 
-    def ask_question(self, user_question: str) -> tuple[str, list]:
+    def _get_llm(self, provider: str):
+        """Factory method to get the specified LLM."""
+        if provider.lower() == "google":
+            return ChatGoogleGenerativeAI(
+                model=self.config.gemini_llm_model, 
+                temperature=self.config.gemini_llm_temperature, 
+                max_output_tokens=self.config.gemini_llm_max_output_tokens,
+                google_api_key=self.config.gemini_api_key
+            )
+        elif provider.lower() == "ollama":
+            return ChatOllama(
+                model=self.config.ollama_model,
+                base_url=self.config.ollama_base_url,
+                temperature=self.config.gemini_llm_temperature
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+    def ask_question(self, user_question: str, provider: str = "google") -> tuple[str, list]:
         """Retrieves documents from Qdrant and generates an answer."""
-        print(f"\n--- Answering Question: '{user_question}' ---")
+        provider_name = "Gemini" if provider.lower() == "google" else "Ollama"
+        print(f"\n--- Answering Question using {provider_name}: '{user_question}' ---")
 
         if not self.qdrant_client.collection_exists(self.config.collection_name):
             print(f"❌ Qdrant collection '{self.config.collection_name}' does not exist. Please run ingestion first.")
@@ -273,17 +291,18 @@ class RAGQueryEngine:
         # Deduplicate while preserving order
         image_paths = list(dict.fromkeys(image_paths))
 
-        print(f"Preparing prompt for Gemini with retrieved context...")
+        print(f"Preparing prompt for {provider_name} with retrieved context...")
         prompt_text = prompt.format(input=user_question, context=context)
 
-        response = self.llm.invoke(prompt_text)
+        llm = self._get_llm(provider)
+        response = llm.invoke(prompt_text)
         answer = response.content if hasattr(response, "content") else str(response)
         
-        self._print_debug_info(matches, answer)
+        self._print_debug_info(matches, answer, provider_name)
 
         return answer, image_paths
 
-    def _print_debug_info(self, matches, answer):
+    def _print_debug_info(self, matches, answer, provider_name: str):
         """Prints debugging and source information."""
         print("\n==================================================")
         print("[DEBUG] 🔍 VECTOR DATABASE RETRIEVAL RESULTS")
@@ -306,9 +325,9 @@ class RAGQueryEngine:
             print()
 
         print("\n==================================================")
-        print("[DEBUG] 🧠 GEMINI MODEL EVALUATION & ANSWER")
+        print(f"[DEBUG] 🧠 {provider_name.upper()} MODEL EVALUATION & ANSWER")
         print("==================================================")
-        print("Gemini read the user question AND the raw text chunks above.")
+        print(f"{provider_name} read the user question AND the raw text chunks above.")
         print("Here is the final generated answer based ONLY on those chunks:\n")
         print(answer)
         print("\n==================================================\n")
@@ -328,10 +347,11 @@ class AstroRAGApplication:
         while True:
             print("\n--- Main Menu ---")
             print("1. Ingest documents (process_bulk_pdfs)")
-            print("2. Ask a question (ask_question)")
-            print("3. Exit")
+            print("2. Ask a question (Gemini)")
+            print("3. Ask a question (Local Ollama - llama3.2:1b)")
+            print("4. Exit")
             
-            choice = input("Enter your choice (1, 2, or 3): ").strip()
+            choice = input("Enter your choice (1, 2, 3, or 4): ").strip()
 
             if choice == '1':
                 print("Ingestion temporarily disabled.")
@@ -339,18 +359,26 @@ class AstroRAGApplication:
             elif choice == '2':
                 question = input("Enter your question: ")
                 if question.strip():
-                    answer, image_paths = self.query_engine.ask_question(question)
+                    answer, image_paths = self.query_engine.ask_question(question, provider="google")
                     if image_paths:
                         print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
                 else:
                     print("Question cannot be empty.")
             elif choice == '3':
+                question = input("Enter your question: ")
+                if question.strip():
+                    answer, image_paths = self.query_engine.ask_question(question, provider="ollama")
+                    if image_paths:
+                        print(f"Also retrieved {len(image_paths)} related images: {image_paths}")
+                else:
+                    print("Question cannot be empty.")
+            elif choice == '4':
                 print("Exiting. Goodbye!")
                 if self.config._qdrant_client:
                     self.config._qdrant_client.close()
                 break
             else:
-                print("Invalid choice. Please enter 1, 2, or 3.")
+                print("Invalid choice. Please enter 1, 2, 3, or 4.")
 
 if __name__ == "__main__":
     app = AstroRAGApplication()

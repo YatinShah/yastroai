@@ -12,3 +12,6 @@ PyMuPDF
 reportlab
 streamlit
 requests
+langchain-ollama
+fastembed
+pypdf

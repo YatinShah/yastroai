@@ -75,7 +75,7 @@ class AstroConfig:
         os.environ["GOOGLE_API_KEY"] = self.gemini_api_key
 
     def _init_models(self):
-        self.embed_provider = os.getenv("EMBED_PROVIDER", "fastembed")
+        self.embed_provider = os.getenv("EMBED_PROVIDER", "ollama")
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.68.10:9090")
         self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
         
@@ -121,7 +121,7 @@ class AstroConfig:
                 self._qdrant_client = QdrantClient(path=self.qdrant_path)
         return self._qdrant_client
 
-    def get_embeddings(self, provider: str = "ollama"):
+    def get_embeddings(self, provider: str = None):
         provider = provider or self.embed_provider
         p_lower = provider.lower()
         if p_lower == "google":
@@ -417,8 +417,7 @@ class AstroRAGApplication:
 
     def _handle_ingestion(self):
         """Triggers document ingestion."""
-        print("Ingestion temporarily disabled in refactored handler.")
-        # self.ingestor.process_bulk_pdfs()
+        self.ingestor.process_bulk_pdfs()
 
     def _handle_query(self, input_stream, provider, question=None):
         """Handles question/answer flow for a specific provider."""

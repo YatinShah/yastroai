@@ -121,7 +121,7 @@ class AstroConfig:
                 self._qdrant_client = QdrantClient(path=self.qdrant_path)
         return self._qdrant_client
 
-    def get_embeddings(self, provider: str = None):
+    def get_embeddings(self, provider: str = "ollama"):
         provider = provider or self.embed_provider
         p_lower = provider.lower()
         if p_lower == "google":
@@ -251,7 +251,7 @@ class DocumentIngestor:
 class RAGEngineInterface(ABC):
     """Abstract base class for RAG implementations."""
     @abstractmethod
-    def ask_question(self, user_question: str, provider: str = "google") -> tuple[str, list]:
+    def ask_question(self, user_question: str, provider: str = "ollama") -> tuple[str, list]:
         """Retrieves context and generates an answer."""
         pass
 
@@ -262,7 +262,7 @@ class AstroRAGEngine(RAGEngineInterface):
         self.embeddings = self.config.get_embeddings()
         self.qdrant_client = self.config.get_qdrant_client()
 
-    def _get_llm(self, provider: str):
+    def _get_llm(self, provider: str="ollama"):
         """Factory method to get the specified LLM."""
         if provider.lower() == "google":
             return ChatGoogleGenerativeAI(
@@ -278,7 +278,7 @@ class AstroRAGEngine(RAGEngineInterface):
             )
         raise ValueError(f"Unsupported provider: {provider}")
 
-    def ask_question(self, user_question: str, provider: str = "google") -> tuple[str, list]:
+    def ask_question(self, user_question: str, provider: str = "ollama") -> tuple[str, list]:
         """Retrieves documents from Qdrant and generates an answer."""
         provider_name = "Gemini" if provider.lower() == "google" else "Ollama"
         if self.config.debug_mode:

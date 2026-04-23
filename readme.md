@@ -171,6 +171,75 @@ streamlit run 5app.py
 
 Open `http://localhost:8501` in your browser.
 
+## Advanced Ingestion and Querying (7atro_ingest.py)
+
+The `7atro_ingest.py` script is a unified tool for document ingestion and multi-provider RAG queries. It supports both interactive terminal usage and automated stream processing.
+
+### 1. Interactive Mode
+Simply run the script to access the main menu:
+```bash
+python 7atro_ingest.py
+```
+
+### 2. Streamed Input (Automated Processing)
+The script automatically detects non-interactive input (piped or redirected) and silences UI prompts.
+
+#### Direct Questions (Defaulting to Ollama)
+You can pipe questions directly. Every new line is treated as a separate question:
+```bash
+echo "Why is Neptune important?" | python 7atro_ingest.py
+```
+
+#### Multiple Questions (Heredoc)
+```bash
+python 7atro_ingest.py <<EOF
+Why is Neptune important?
+How is Pluto manifested?
+EOF
+```
+
+#### Multi-line Questions
+Use the `|` character at the end of a line to continue a question on the next line:
+```bash
+python 7atro_ingest.py <<EOF
+What are the characteristics of |
+the planet Venus in astrology?
+EOF
+```
+
+#### Mixing Options and Questions
+You can also provide the menu option number before the question:
+```bash
+python 7atro_ingest.py <<EOF
+2
+What is the significance of the sun in Gemini?
+3
+How does Mars influence energy?
+EOF
+```
+
+#### Processing Files (Bulk Questions)
+You can redirect a file containing questions into the script and save the output to another file:
+```bash
+python 7atro_ingest.py < questions.txt > answers.txt
+```
+
+### 3. Environment Configurations
+You can control the behavior of the script using environment variables:
+
+| Variable | Description | Values | Default |
+|----------|-------------|--------|---------|
+| `DEBUG_MODE` | Toggles verbose logging and retrieval chunks | `true`, `false` | `false` |
+| `EMBED_PROVIDER` | Selects the embedding provider | `google`, `ollama`, `fastembed` | `fastembed` |
+| `OLLAMA_BASE_URL` | URL for the local Ollama server | URL string | `http://192.168.68.10:9090` |
+
+**Example with Debug Mode and Google Provider:**
+```bash
+DEBUG_MODE=true EMBED_PROVIDER=google python 7atro_ingest.py <<EOF
+What is my birth planet for 01/01/1906?
+EOF
+```
+
 ## Docker Commands
 
 ### Start all services

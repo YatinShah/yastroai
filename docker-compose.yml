@@ -31,6 +31,21 @@ services:
       - rag-network
     restart: unless-stopped
 
+  neo4j:
+    image: neo4j:5.18.0
+    container_name: local_neo4j
+    hostname: local_neo4j 
+    ports:
+      - "7474:7474" # HTTP Browser
+      - "7687:7687" # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/password # Default credentials for local development
+    volumes:
+      - ./neo4j_data:/data
+    networks:
+      - rag-network
+    restart: unless-stopped
+
 networks:
   rag-network:
     driver: bridge

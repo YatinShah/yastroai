@@ -417,7 +417,8 @@ class AstroRAGApplication:
 
     def _handle_ingestion(self):
         """Triggers document ingestion."""
-        self.ingestor.process_bulk_pdfs()
+        print("Ingestion temporaroly blocked")
+        # self.ingestor.process_bulk_pdfs()
 
     def _handle_query(self, input_stream, provider, question=None):
         """Handles question/answer flow for a specific provider."""

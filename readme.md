@@ -276,6 +276,11 @@ docker compose up --build app -d
 - [VertexAI Locations](https://docs.cloud.google.com/vertex-ai/docs/general/locations)
 - Gemini embedding models: https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-embedding-2/
 - Embedding model comparison: https://milvus.io/blog/choose-embedding-model-rag-2026.md ^^VGood^^
+- [Alternate RAG](https://launchdarkly.com/blog/llm-rag-tutorial/)
+   - Include Sql filtered data
+   - rag 
+   - agentic
+   - event drive too.
 
 ## TODO
 - Use newer libraries, and remove deprecated libraries/objects from use (e.g. use GenAI instead of Vertex AI)

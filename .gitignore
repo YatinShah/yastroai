@@ -383,5 +383,5 @@ ollama/
 *.pdf
 *.txt
 Paper/
-qdrant_storage/
+qdrant_storage*/
 credentials/
